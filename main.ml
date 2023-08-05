@@ -1,23 +1,36 @@
 type 'a parser = string -> (string * 'a) option
 
-let map (f: 'a -> 'b) (p: 'a parser): 'b parser =
+let ( >>= ) (p1: 'a parser) (f: 'a -> 'b parser): 'b parser =
   fun input ->
-  match p input with
-  | Some (input', output) -> Some (input', f output)
+  match p1 input with
+  | Some (input', output) -> f output input'
   | None -> None
 
+let map (f: 'a -> 'b) (p: 'a parser): 'b parser =
+  p >>= fun output input' -> Some (input', f output)
+
+let ( <$> ) (f: 'a -> 'b) (p: 'a parser): 'b parser = map f p
+
+let ( <*> ) (pf: ('a -> 'b) parser) (p: 'a parser): 'b parser =
+  pf >>= fun output ->
+  p >>= fun output' input'' ->
+  Some (input'', output output')
+
 let ( *> ) (p1: 'a parser) (p2: 'b parser): 'b parser =
-      fun input ->
-      match p1 input with
-      | Some (input', _) -> p2 input'
-      | None -> None
+  p1 >>= fun _ input' ->
+  p2 input'
 
 let ( <* ) (p1: 'a parser) (p2: 'b parser): 'a parser =
-      fun input ->
-      match p1 input with
-      | Some (input', output) ->
-         map (fun _ -> output) p2 input'
-      | None -> None
+  p1 >>= fun output ->
+  p2 >>= fun _ input'' ->
+  Some (input'', output)
+
+let ( <|> ) (p1: 'a parser) (p2: 'a parser): 'a parser =
+  fun input ->
+  let p1_out = p1 input in
+  if Option.is_some p1_out
+  then p1_out
+  else p2 input
 
 let parse_char (c: char): char parser =
   fun input ->
@@ -53,29 +66,38 @@ let is_number (c: char): bool =
   code >= 48 && code <= 57
 
 let parse_int: int parser =
-  fun input ->
-  match parse_while is_number input with
-  | Some (input', output) -> if String.length output > 0
-                             then Some (input', Stdlib.int_of_string output)
-                             else None
-  | None -> None
+  parse_while is_number >>= fun output input' ->
+  if String.length output > 0
+  then Some (input', Stdlib.int_of_string output)
+  else None
 
 let parse_identifier: string parser =
   parse_while (fun x -> x != ' ' && x != '(' && x != ')')
 
-type value =
-  | Number of int
+type value = int
 
-let parse_number: value parser = map (fun x -> Number x) parse_int
+let parse_number: value parser = (* map (fun x -> Number x) *) parse_int
 
-let parse_expression(* : value parser *) =
-  parse_char '(' *> parse_ws *> parse_identifier <* parse_ws <* parse_char ')'
+let resolve_identifier (name: string): (value -> value -> value) =
+  match name with
+  | "+" -> ( + )
+  | "-" -> ( - )
+  | "*" -> ( * )
+  | "/" -> ( / )
+  | _ -> failwith "Not implemented"
 
-(* let parse_expression: math_value parser = *)
+let unlazy_parser p =
+  fun input -> Lazy.force p input
 
-(* type expression = { fun_name : string; };; *)
+let rec parse_sexp': int parser lazy_t =
+  lazy ((fun name arg1 arg2 -> (resolve_identifier name) arg1 arg2)
+        <$> (parse_char '(' *> parse_ws *> parse_identifier)
+        <*> (parse_ws *> (parse_number <|> unlazy_parser parse_sexp'))
+        <*> (parse_ws
+             *> (parse_number <|> unlazy_parser parse_sexp')
+             <* parse_char ')'))
 
-(* let parse_expression: parser *)
+let parse_sexp = unlazy_parser parse_sexp'
 
 (* let main () = *)
 (*   let rec read_loop () = *)
