@@ -98,13 +98,3 @@ let rec parse_sexp': int parser lazy_t =
              <* parse_char ')'))
 
 let parse_sexp = unlazy_parser parse_sexp'
-
-(* let main () = *)
-(*   let rec read_loop () = *)
-(*     let line = read_line () in *)
-(*     print_endline line; *)
-(*     read_loop (); *)
-(*   in *)
-(*   read_loop ();; *)
-
-(* let () = main ();; *)
