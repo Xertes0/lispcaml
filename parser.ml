@@ -2,9 +2,9 @@ type 'a parser = string -> (string * 'a) option
 
 let ( >>= ) (p1: 'a parser) (f: 'a -> 'b parser): 'b parser =
   fun input ->
-  match p1 input with
-  | Some (input', output) -> f output input'
-  | None -> None
+  Option.bind
+    (p1 input)
+    (fun (input', output) -> f output input')
 
 let map (f: 'a -> 'b) (p: 'a parser): 'b parser =
   p >>= fun output input' -> Some (input', f output)
