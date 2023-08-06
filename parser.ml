@@ -61,40 +61,52 @@ let parse_while (cond: char -> bool): string parser =
 let parse_ws: string parser =
   parse_while (( == ) ' ')
 
-let is_number (c: char): bool =
-  let code = Char.code c in
-  code >= 48 && code <= 57
-
-let parse_int: int parser =
-  parse_while is_number >>= fun output input' ->
-  if String.length output > 0
-  then Some (input', Stdlib.int_of_string output)
-  else None
-
 let parse_identifier: string parser =
   parse_while (fun x -> x != ' ' && x != '(' && x != ')')
 
-type value = int
+type value = float
 
-let parse_number: value parser = (* map (fun x -> Number x) *) parse_int
+let is_number (c: char): bool =
+  let code = Char.code c in
+  code >= 48 && code <= 57 || c == '.'
 
-let resolve_identifier (name: string): (value -> value -> value) =
+let parse_value: value parser =
+  parse_while is_number >>= fun output input' ->
+  if String.length output > 0
+  then Some (input', Stdlib.float_of_string output)
+  else None
+
+let resolve_identifier (name: string): (value list -> value) =
   match name with
-  | "+" -> ( + )
-  | "-" -> ( - )
-  | "*" -> ( * )
-  | "/" -> ( / )
+  | "+" -> List.fold_left ( +. ) 0.
+  | "-" -> List.fold_left ( -. ) 0.
+  | "*" -> List.fold_left ( *. ) 1.
+  | "/" -> List.fold_left ( /. ) 1.
+  | "^" -> (fun [a;b] -> a ** b)
+  | "sqrt" -> (fun [a] -> Float.sqrt a)
   | _ -> failwith "Not implemented"
 
 let unlazy_parser p =
   fun input -> Lazy.force p input
 
-let rec parse_sexp': int parser lazy_t =
-  lazy ((fun name arg1 arg2 -> (resolve_identifier name) arg1 arg2)
+let rec parse_sexp': value parser lazy_t =
+  lazy ((fun name args -> (resolve_identifier name) args)
         <$> (parse_char '(' *> parse_ws *> parse_identifier)
-        <*> (parse_ws *> (parse_number <|> unlazy_parser parse_sexp'))
-        <*> (parse_ws
-             *> (parse_number <|> unlazy_parser parse_sexp')
-             <* parse_char ')'))
+        <*> parse_args <* parse_ws <* parse_char ')')
+and parse_arg: value parser lazy_t =
+  lazy (parse_ws *> (parse_value <|> unlazy_parser parse_sexp'))
+and parse_args: value list parser =
+  fun input ->
+  let input' = ref input in
+  let output = ref [] in
+  let cond = ref true in
+  while !cond do
+    match Lazy.force parse_arg !input' with
+    | Some (input'', output') ->
+       input' := input'';
+       output := List.append !output [output']
+    | None -> cond := false;
+  done;
+  Some (!input', !output)
 
 let parse_sexp = unlazy_parser parse_sexp'
