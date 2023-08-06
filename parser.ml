@@ -97,16 +97,13 @@ and parse_arg: value parser lazy_t =
   lazy (parse_ws *> (parse_value <|> unlazy_parser parse_sexp'))
 and parse_args: value list parser =
   fun input ->
-  let input' = ref input in
-  let output = ref [] in
-  let cond = ref true in
-  while !cond do
-    match Lazy.force parse_arg !input' with
-    | Some (input'', output') ->
-       input' := input'';
-       output := List.append !output [output']
-    | None -> cond := false;
-  done;
-  Some (!input', !output)
+  let apply (prev: (string * value list) option): (string * value list) option =
+    Option.bind prev (fun (input', output) ->
+        Option.bind (Lazy.force parse_arg input') (fun (input'', output') ->
+            Some (input'', List.append output [output'])))
+  in
+  Seq.iterate apply (Some (input, []))
+  |> Seq.take_while Option.is_some
+  |> Seq.fold_left (fun _ a -> a) None
 
 let parse_sexp = unlazy_parser parse_sexp'
